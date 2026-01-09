@@ -18,5 +18,14 @@ TEST_MODE = False             # Set to True to draw test cube at fixed position
 POSITION_SMOOTHING = 0.2      # Position smoothing (0-1: lower = smoother, higher = more responsive)
 
 # ---------------- FILE PATHS ----------------
-MARKER_IMAGE = "marker3.jpeg"  # Path to marker image
-MODEL_FILE = "Buddha.glb"      # Path to 3D model (supports .obj, .gltf, .glb)
+# Define which model loads for which marker
+MARKER_MAPPING = {
+    "marker.jpeg": "Buddha.glb",
+    "marker2.jpeg": "Stupid2.glb", 
+    "marker3.jpeg": "staircase.glb", # Example second marker
+     # Multiple markers can show same model
+}
+
+# Legacy single-file fallback (will be ignored by new app logic)
+# MARKER_IMAGE = "marker.jpeg"
+# MODEL_FILE = "Buddha.glb"

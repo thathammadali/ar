@@ -35,28 +35,38 @@ from OpenGL.GL import (
 from config import MODEL_SCALE
 
 
-# Global draw counter and texture cache
+# Global draw counter (legacy cache fallback)
 DRAW_COUNT = 0
-GL_TEXTURE_CACHE = {}  # Maps texture_index to OpenGL texture ID
+GLOBAL_TEXTURE_CACHE = {} 
 
 
-def load_texture_to_opengl(texture_index, image):
+def load_texture_to_opengl(texture_index, image, texture_cache=None):
     """Load a PIL Image as an OpenGL texture.
     
     Args:
         texture_index: Index to cache the texture under
         image: PIL Image object
+        texture_cache: Dict to store OpenGL IDs in (optional)
     
     Returns:
         OpenGL texture ID
     """
-    global GL_TEXTURE_CACHE
+    if texture_cache is None:
+        global GLOBAL_TEXTURE_CACHE
+        texture_cache = GLOBAL_TEXTURE_CACHE
     
-    if texture_index in GL_TEXTURE_CACHE:
-        return GL_TEXTURE_CACHE[texture_index]
+    if texture_index in texture_cache:
+        return texture_cache[texture_index]
     
     # Convert PIL image to bytes
-    img_data = np.array(image, dtype=np.uint8)
+    try:
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        img_data = np.array(image, dtype=np.uint8)
+    except Exception as e:
+        print(f"Error converting texture {texture_index}: {e}")
+        return 0
+
     height, width = img_data.shape[:2]
     
     # Generate OpenGL texture
@@ -78,7 +88,7 @@ def load_texture_to_opengl(texture_index, image):
     )
     
     # Cache it
-    GL_TEXTURE_CACHE[texture_index] = texture_id
+    texture_cache[texture_index] = texture_id
     
     print(f"DEBUG: Loaded OpenGL texture {texture_index} -> ID {texture_id}")
     
@@ -107,7 +117,7 @@ def cv_to_gl(rvec, tvec):
     return view
 
 
-def draw_model(vertices, faces, materials, uvs=None, textures=None):
+def draw_model(vertices, faces, materials, uvs=None, textures=None, texture_cache=None):
     """Draw the 3D model using OpenGL with materials and textures.
     
     Args:
@@ -116,12 +126,18 @@ def draw_model(vertices, faces, materials, uvs=None, textures=None):
         materials: Dict mapping material names to {'color': [RGB], 'texture_index': int or None}
         uvs: Numpy array of UV coordinates (N, 2), or None
         textures: Dict mapping texture indices to PIL.Image objects, or None
+        texture_cache: Dict for caching OpenGL texture IDs (optional)
     """
     global DRAW_COUNT
     DRAW_COUNT += 1
     
-    if DRAW_COUNT % 30 == 1:
-        print(f"Drawing model (frame {DRAW_COUNT})...")
+    if texture_cache is None:
+        global GLOBAL_TEXTURE_CACHE
+        texture_cache = GLOBAL_TEXTURE_CACHE
+    
+    if DRAW_COUNT % 60 == 1:
+        # print(f"Drawing model (frame {DRAW_COUNT})...")
+        pass
     
     # Disable blending for solid rendering
     glDisable(GL_BLEND)
@@ -139,8 +155,8 @@ def draw_model(vertices, faces, materials, uvs=None, textures=None):
     # Load all textures if not already cached
     if textures:
         for tex_idx, img in textures.items():
-            if tex_idx not in GL_TEXTURE_CACHE:
-                load_texture_to_opengl(tex_idx, img)
+            if tex_idx not in texture_cache:
+                load_texture_to_opengl(tex_idx, img, texture_cache)
     
     # Group faces by material and draw
     current_material = None
@@ -168,7 +184,7 @@ def draw_model(vertices, faces, materials, uvs=None, textures=None):
                 if tex_idx is not None and textures and tex_idx in textures:
                     # Enable texturing
                     glEnable(GL_TEXTURE_2D)
-                    texture_id = GL_TEXTURE_CACHE.get(tex_idx)
+                    texture_id = texture_cache.get(tex_idx)
                     if texture_id:
                         glBindTexture(GL_TEXTURE_2D, texture_id)
                         current_texture = tex_idx
