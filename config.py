@@ -15,7 +15,7 @@ FRAME_SKIP = 1                # Process every Nth frame (higher = faster but les
 MODEL_SCALE = 1.0             # Scale factor for 3D model (adjust if too big/small)
 BASE_MODEL_SIZE = 0.5         # Model size relative to marker (0.5 = half marker size)
 TEST_MODE = False             # Set to True to draw test cube at fixed position
-POSITION_SMOOTHING = 0.01      # Position smoothing (0-1: lower = smoother, higher = more responsive)
+POSITION_SMOOTHING = 0.001      # Position smoothing (0-1: lower = smoother, higher = more responsive)
 
 # ---------------- FILE PATHS ----------------
 MARKER_IMAGE = "marker2.jpeg"  # Path to marker image
