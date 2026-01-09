@@ -140,11 +140,6 @@ def main():
     frame_count = 0
     last_homography = None
     
-    # Smoothed position for stable tracking
-    smoothed_x = 0.0
-    smoothed_y = 0.0
-    first_detection = True  # Flag to initialize smoothed position on first detection
-    
     while running:
         # Handle events
         for event in pygame.event.get():
@@ -166,9 +161,6 @@ def main():
         # Only process detection every FRAME_SKIP frames for performance
         if frame_count % FRAME_SKIP == 0:
             last_homography = detector.detect_marker(gray)
-            # Reset smoothing on marker loss
-            if last_homography is None:
-                first_detection = True
         frame_count += 1
         
         # Clear buffers
@@ -202,79 +194,34 @@ def main():
             try:
                 rvec, tvec = detector.get_pose(last_homography)
                 
-                # Get marker center in image coordinates
-                marker_corners = np.array([
-                    [0, 0], [detector.marker_width, 0],
-                    [detector.marker_width, detector.marker_height],
-                    [0, detector.marker_height]
-                ], dtype=np.float32).reshape(-1, 1, 2)
-                img_corners = cv2.perspectiveTransform(marker_corners, last_homography)
-                center_x = img_corners[:, 0, 0].mean()
-                center_y = img_corners[:, 0, 1].mean()
+                # Calculate correct FOV from camera intrinsics
+                # fovy = 2 * arctan(height / (2 * fy))
+                fy = detector.camera_matrix[1, 1]
+                fovy = 2 * np.degrees(np.arctan(CAMERA_HEIGHT / (2 * fy)))
                 
-                # Initialize smoothed position on first detection
-                if first_detection:
-                    smoothed_x = center_x
-                    smoothed_y = center_y
-                    first_detection = False
-                
-                # Apply exponential smoothing to reduce jitter
-                smoothed_x = POSITION_SMOOTHING * center_x + (1 - POSITION_SMOOTHING) * smoothed_x
-                smoothed_y = POSITION_SMOOTHING * center_y + (1 - POSITION_SMOOTHING) * smoothed_y
-                
-                # Convert to normalized device coordinates
-                ndc_x = (smoothed_x / CAMERA_WIDTH) * 2 - 1
-                ndc_y = -((smoothed_y / CAMERA_HEIGHT) * 2 - 1)
-                
-                # Calculate marker size for dynamic scaling
-                # Larger marker in image = closer to camera = model should be larger
-                marker_width_pixels = np.linalg.norm(img_corners[1, 0] - img_corners[0, 0])
-                marker_height_pixels = np.linalg.norm(img_corners[2, 0] - img_corners[1, 0])
-                avg_marker_size = (marker_width_pixels + marker_height_pixels) / 2
-                
-                # Dynamic scale: proportional to marker size
-                # Reference: when marker is 200 pixels, use BASE_MODEL_SIZE
-                reference_marker_size = 200.0
-                dynamic_scale = BASE_MODEL_SIZE * (avg_marker_size / reference_marker_size)
-                
-                # Set up projection
+                # Set up projection using correct FOV
                 glMatrixMode(GL_PROJECTION)
-                glPushMatrix()
                 glLoadIdentity()
-                gluPerspective(45, display[0] / display[1], 0.1, 1000.0)
+                gluPerspective(fovy, display[0] / display[1], 0.1, 100.0)
                 
-                # Set up modelview
+                # Set up modelview using the estimated pose
                 glMatrixMode(GL_MODELVIEW)
-                glPushMatrix()
                 glLoadIdentity()
                 
-                # Position the model at marker location
-                glTranslatef(ndc_x * 2, ndc_y * 2, -5)
-                
-                # Apply rotation from pose estimation
-                rotation_matrix, _ = cv2.Rodrigues(rvec)
-                angle = np.linalg.norm(rvec)
-                if angle > 0:
-                    axis = rvec.flatten() / angle
-                    glRotatef(np.degrees(angle), axis[0], axis[1], axis[2])
+                # Apply pose transformation from CV to OpenGL
+                view_matrix = cv_to_gl(rvec, tvec)
+                glMultMatrixf(view_matrix.T)
                 
                 # Orient model: rotate -90° around X axis so -Z sits on marker plane
                 glRotatef(-90, 1, 0, 0)
                 
-                # Flip model to face camera (180° around Y-axis)
-                # glRotatef(180, 0, 1, 0)
-                
-                # Apply dynamic scaling
-                glScalef(dynamic_scale, dynamic_scale, dynamic_scale)
+                # Apply base scaling (fixed size relative to marker width)
+                # Since marker width = 1.0 in world units, a scale of 1.0 means model is same width as marker
+                scale = BASE_MODEL_SIZE
+                glScalef(scale, scale, scale)
                 
                 # Draw the 3D model
                 draw_model(vertices, faces, materials, uvs, textures)
-                
-                # Restore matrices
-                glPopMatrix()
-                glMatrixMode(GL_PROJECTION)
-                glPopMatrix()
-                glMatrixMode(GL_MODELVIEW)
             
             except Exception as e:
                 # Catch rendering errors to prevent crash

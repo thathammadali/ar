@@ -96,12 +96,21 @@ class MarkerDetector:
         Returns:
             Tuple of (rotation vector, translation vector)
         """
+        # Define marker in 3D world coordinates (normalized size)
+        # Define marker in 3D world coordinates (normalized size)
+        # Width = 1.0, Height = derived from aspect ratio
+        # Origin at center of marker
+        aspect_ratio = self.marker_height / self.marker_width
+        
+        # Define object points relative to center (0,0,0)
+        # Order: Top-Left, Top-Right, Bottom-Right, Bottom-Left
+        # Matches the order of img_pts below
         obj_pts = np.array(
             [
-                [0, 0, 0],
-                [self.marker_width, 0, 0],
-                [self.marker_width, self.marker_height, 0],
-                [0, self.marker_height, 0]
+                [-0.5, 0.5 * aspect_ratio, 0],
+                [0.5, 0.5 * aspect_ratio, 0],
+                [0.5, -0.5 * aspect_ratio, 0],
+                [-0.5, -0.5 * aspect_ratio, 0]
             ],
             dtype=np.float32
         )
@@ -115,7 +124,6 @@ class MarkerDetector:
             ],
             dtype=np.float32
         ).reshape(-1, 1, 2)
-        
         img_pts = cv2.perspectiveTransform(img_pts, homography).reshape(-1, 2)
         
         _success, rvec, tvec = cv2.solvePnP(

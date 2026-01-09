@@ -2,6 +2,8 @@
 import cv2
 from OpenGL.GL import (
     GL_DEPTH_TEST,
+    GL_MODELVIEW,
+    GL_PROJECTION,
     GL_QUADS,
     GL_RGB,
     GL_TEXTURE_2D,
@@ -13,6 +15,7 @@ from OpenGL.GL import (
     glEnable,
     glEnd,
     glLoadIdentity,
+    glMatrixMode,
     glTexCoord2f,
     glTexImage2D,
     glVertex3f,
@@ -42,7 +45,13 @@ def render_background(frame, texture_id):
     glDisable(GL_DEPTH_TEST)
     glDepthMask(False)  # Don't write to depth buffer
     
+    # Set up orthographic projection for background
+    glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
+    
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    
     glBegin(GL_QUADS)
     glTexCoord2f(0, 0)
     glVertex3f(-1, -1, -0.5)
