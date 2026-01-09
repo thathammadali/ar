@@ -80,6 +80,12 @@ def main():
                     print(f"  - {mat_name}: RGB({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f})")
         
         if len(vertices) > 0:
+            # Auto-center vertices
+            # This fixes issues where models are exported with origin at corner
+            center = (vertices.max(axis=0) + vertices.min(axis=0)) / 2
+            vertices -= center
+            print(f"✓ Model centered. Shifted by: {center}")
+            
             print(f"✓ Vertex range: "
                   f"X({vertices[:, 0].min():.2f}, {vertices[:, 0].max():.2f}), "
                   f"Y({vertices[:, 1].min():.2f}, {vertices[:, 1].max():.2f}), "
@@ -138,7 +144,13 @@ def main():
     # Main loop
     running = True
     frame_count = 0
-    last_homography = None
+    
+    # Tracking state
+    current_scale = BASE_MODEL_SIZE
+    smoothed_rvec = None
+    smoothed_tvec = None
+    missing_frames = 0
+    MAX_MISSING_FRAMES = 10  # Keep model visible for N frames if marker lost
     
     while running:
         # Handle events
@@ -148,6 +160,12 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                elif event.key == pygame.K_UP:
+                    current_scale += 0.05
+                    print(f"Scale increased: {current_scale:.2f}")
+                elif event.key == pygame.K_DOWN:
+                    current_scale = max(0.01, current_scale - 0.05)
+                    print(f"Scale decreased: {current_scale:.2f}")
         
         # Capture frame
         ret, frame = cap.read()
@@ -158,9 +176,38 @@ def main():
         frame = cv2.resize(frame, display)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Only process detection every FRAME_SKIP frames for performance
-        if frame_count % FRAME_SKIP == 0:
-            last_homography = detector.detect_marker(gray)
+        # Detection logic
+        # Optimize: detected only every N frames, or every frame?
+        # For smoothing to work best, every frame is preferred if performance allows.
+        homography = detector.detect_marker(gray)
+        
+        detected = False
+        rvec, tvec = None, None
+        
+        if homography is not None:
+            try:
+                rvec, tvec = detector.get_pose(homography)
+                detected = True
+                missing_frames = 0
+            except Exception as e:
+                print(f"Pose error: {e}")
+        
+        # Update tracking state (Smoothing & Persistence)
+        if detected:
+            if smoothed_rvec is None:
+                smoothed_rvec = rvec
+                smoothed_tvec = tvec
+            else:
+                # Apply exponential smoothing
+                alpha = POSITION_SMOOTHING
+                smoothed_rvec = alpha * rvec + (1 - alpha) * smoothed_rvec
+                smoothed_tvec = alpha * tvec + (1 - alpha) * smoothed_tvec
+        else:
+            missing_frames += 1
+            if missing_frames > MAX_MISSING_FRAMES:
+                smoothed_rvec = None
+                smoothed_tvec = None
+        
         frame_count += 1
         
         # Clear buffers
@@ -189,13 +236,10 @@ def main():
             glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
         
-        # AR MODE: Draw based on marker detection
-        elif last_homography is not None:
+        # AR MODE: Draw based on smoothed pose
+        elif smoothed_tvec is not None:
             try:
-                rvec, tvec = detector.get_pose(last_homography)
-                
                 # Calculate correct FOV from camera intrinsics
-                # fovy = 2 * arctan(height / (2 * fy))
                 fy = detector.camera_matrix[1, 1]
                 fovy = 2 * np.degrees(np.arctan(CAMERA_HEIGHT / (2 * fy)))
                 
@@ -204,20 +248,19 @@ def main():
                 glLoadIdentity()
                 gluPerspective(fovy, display[0] / display[1], 0.1, 100.0)
                 
-                # Set up modelview using the estimated pose
+                # Set up modelview using the smoothed pose
                 glMatrixMode(GL_MODELVIEW)
                 glLoadIdentity()
                 
                 # Apply pose transformation from CV to OpenGL
-                view_matrix = cv_to_gl(rvec, tvec)
+                view_matrix = cv_to_gl(smoothed_rvec, smoothed_tvec)
                 glMultMatrixf(view_matrix.T)
                 
-                # Orient model: rotate -90° around X axis so -Z sits on marker plane
+                # Orient model: rotate 90° around X axis (USER PREFERENCE)
                 glRotatef(90, 1, 0, 0)
                 
-                # Apply base scaling (fixed size relative to marker width)
-                # Since marker width = 1.0 in world units, a scale of 1.0 means model is same width as marker
-                scale = BASE_MODEL_SIZE
+                # Apply scaling (user controlled)
+                scale = current_scale
                 glScalef(scale, scale, scale)
                 
                 # Draw the 3D model

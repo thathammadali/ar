@@ -19,4 +19,4 @@ POSITION_SMOOTHING = 0.2      # Position smoothing (0-1: lower = smoother, highe
 
 # ---------------- FILE PATHS ----------------
 MARKER_IMAGE = "marker2.jpeg"  # Path to marker image
-MODEL_FILE = "Stupid .glb"      # Path to 3D model (supports .obj, .gltf, .glb)
+MODEL_FILE = "Stupid2.glb"      # Path to 3D model (supports .obj, .gltf, .glb)
