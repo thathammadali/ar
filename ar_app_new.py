@@ -213,7 +213,7 @@ def main():
                 glMultMatrixf(view_matrix.T)
                 
                 # Orient model: rotate -90° around X axis so -Z sits on marker plane
-                glRotatef(-90, 1, 0, 0)
+                glRotatef(90, 1, 0, 0)
                 
                 # Apply base scaling (fixed size relative to marker width)
                 # Since marker width = 1.0 in world units, a scale of 1.0 means model is same width as marker
