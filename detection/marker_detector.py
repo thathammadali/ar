@@ -36,19 +36,7 @@ class MarkerDetector:
         
         # Load all markers
         self.markers = {}
-        self.use_cuda = False
         
-        # Check CUDA availability once
-        try:
-            if hasattr(cv2, 'cuda') and cv2.cuda.getCudaEnabledDeviceCount() > 0:
-                print("CUDA device detected. Initializing CUDA ORB...")
-                self.cuda_orb = cv2.cuda.ORB_create(ORB_FEATURES)
-                self.cuda_matcher = cv2.cuda.DescriptorMatcher_createDFSMatcher(cv2.cuda.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
-                self.use_cuda = True
-                print("✓ CUDA initialized!")
-        except Exception as e:
-            print(f"CUDA init failed: {e}. Using CPU.")
-
         print("Loading markers...")
         for image_path, _model_file in MARKER_MAPPING.items():
             try:
@@ -67,19 +55,7 @@ class MarkerDetector:
                     "height": h,
                     "kp": kp,
                     "des": des,
-                    "gpu_marker": None,
-                    "cuda_kp": None,
-                    "cuda_des": None
                 }
-                
-                # Upload to GPU if available
-                if self.use_cuda:
-                    gpu_img = cv2.cuda_GpuMat()
-                    gpu_img.upload(img)
-                    c_kp, c_des = self.cuda_orb.detectAndComputeAsync(gpu_img, None)
-                    marker_data["gpu_marker"] = gpu_img
-                    marker_data["cuda_kp"] = c_kp
-                    marker_data["cuda_des"] = c_des
                 
                 self.markers[image_path] = marker_data
                 print(f"  ✓ Loaded {image_path}: {w}x{h}, {len(kp)} features")
@@ -103,25 +79,12 @@ class MarkerDetector:
         best_name = None
         max_inliers = 0
         
-        # We need frame features once
-        if self.use_cuda:
-             gpu_frame = cv2.cuda_GpuMat()
-             gpu_frame.upload(frame_enhanced)
-             frame_kp_gpu, frame_des = self.cuda_orb.detectAndComputeAsync(gpu_frame, None)
-             # Convert KP to CPU for findingHomography later? OR detectAndComputeAsync returns (kp, des)
-             # frame_kp_gpu is keypoints handle?
-        else:
-             frame_kp, frame_des = self.orb.detectAndCompute(frame_enhanced, None)
+        # CPU Detection
+        frame_kp, frame_des = self.orb.detectAndCompute(frame_enhanced, None)
         
         # Iterate all markers to find best match
         for name, data in self.markers.items():
-            homography = None
-            inliers = 0
-            
-            if self.use_cuda:
-                homography, inliers = self._match_marker_cuda(data, frame_kp_gpu, frame_des)
-            else:
-                homography, inliers = self._match_marker_cpu(data, frame_kp, frame_des)
+            homography, inliers = self._match_marker_cpu(data, frame_kp, frame_des)
             
             if homography is not None and inliers > max_inliers:
                 max_inliers = inliers
