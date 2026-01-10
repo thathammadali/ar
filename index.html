@@ -29,6 +29,71 @@
             font-family: sans-serif;
             pointer-events: none;
         }
+
+        .control-panel {
+            position: fixed;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .left-panel {
+            top: 10px;
+            left: 10px;
+        }
+
+        .right-panel {
+            top: 10px;
+            right: 10px;
+        }
+
+        input[type=range] {
+            width: 150px;
+            cursor: pointer;
+        }
+
+        /* Mobile / Portrait Styles */
+        @media (max-width: 600px) {
+            .control-panel {
+                top: 50% !important;
+                transform: translateY(-50%);
+                background: rgba(0, 0, 0, 0.4);
+                /* Slightly transparent on mobile */
+            }
+
+            .left-panel {
+                left: 0;
+                border-top-left-radius: 0;
+                border-bottom-left-radius: 0;
+            }
+
+            .right-panel {
+                right: 0;
+                border-top-right-radius: 0;
+                border-bottom-right-radius: 0;
+            }
+
+            /* Rotate sliders to be vertical */
+            input[type=range] {
+                transform: rotate(-90deg);
+                width: 200px;
+                /* Longer slide area */
+                margin: 80px -80px;
+                /* Adjust spacing after rotation */
+            }
+
+            label {
+                margin-bottom: 10px;
+                font-weight: bold;
+                text-shadow: 1px 1px 2px black;
+            }
+        }
     </style>
 
     <!-- Import Map Removed for Vite -->
@@ -40,11 +105,27 @@
         Status: <span id="status">Initializing</span>
     </div>
 
-    <!-- UI Controls -->
-    <div
-        style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; color: white; font-family: sans-serif;">
-        <label for="brightness">Brightness</label><br>
-        <input type="range" id="brightness" min="0" max="10" step="0.5" value="5" style="width: 150px;">
+    <!-- Scale Control (Left) -->
+    <div class="control-panel left-panel">
+        <label for="scale">Scale: <span id="scale-val">1.0</span></label>
+        <input type="range" id="scale" min="0.1" max="3.0" step="0.1" value="1.0" list="scale-markers">
+        <datalist id="scale-markers">
+            <option value="0.1"></option>
+            <option value="1.0"></option>
+            <option value="2.0"></option>
+            <option value="3.0"></option>
+        </datalist>
+    </div>
+
+    <!-- Brightness Control (Right) -->
+    <div class="control-panel right-panel">
+        <label for="brightness">Brightness: <span id="bright-val">5.0</span></label>
+        <input type="range" id="brightness" min="0" max="10" step="0.5" value="5" list="bright-markers">
+        <datalist id="bright-markers">
+            <option value="0"></option>
+            <option value="5"></option>
+            <option value="10"></option>
+        </datalist>
     </div>
 
     <!-- Main Entry Point -->

@@ -13,9 +13,9 @@ const CONFIG = {
     // SCALE: Now interpreted as "Multiplier of Normalized Size". 
     // 1.0 = Width of Marker. 0.5 = Half Width.
     MAPPINGS: [
-        { index: 1, model: 'Temple.glb', scale: 3 },
-        { index: 0, model: 'Staircase.glb', scale: 3 },
-        { index: 2, model: 'Buddha.glb', scale: 3 },
+        { index: 1, model: 'Temple.glb', scale: 2 },
+        { index: 0, model: 'Staircase.glb', scale: 2 },
+        { index: 2, model: 'Buddha.glb', scale: 2 },
     ]
 };
 
@@ -71,11 +71,13 @@ const setupAR = async () => {
 
     // UI: Brightness Slider Logic
     const slider = document.getElementById('brightness');
+    const brightVal = document.getElementById('bright-val');
     if (slider) {
         slider.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
             light.intensity = val;
             dirLight.intensity = val * 0.8; // Increased multiplier
+            if (brightVal) brightVal.textContent = val.toFixed(1);
         });
     }
 
@@ -125,8 +127,8 @@ const setupAR = async () => {
             // Since we scaled the model, we must scale the offset too.
             model.position.set(
                 -center.x * scaleFactor,
-                -box.min.y * scaleFactor, // Align Bottom
-                -center.z * scaleFactor
+                -center.y * scaleFactor, // Center Y (Model Depth -> Middle of Marker)
+                -box.min.z * scaleFactor // Start Z (Model Height -> On top of Marker)
             );
 
             console.log(`[${mapping.model}] Final Scale: ${scaleFactor}`);
@@ -143,7 +145,8 @@ const setupAR = async () => {
 
             return {
                 index: mapping.index,
-                anchor: anchor
+                anchor: anchor,
+                wrapper: wrapper
             };
 
         } catch (e) {
@@ -204,6 +207,21 @@ const setupAR = async () => {
 
         renderer.render(scene, camera);
     });
+
+    // UI: Scale Slider Logic
+    const scaleSlider = document.getElementById('scale');
+    const scaleVal = document.getElementById('scale-val');
+    if (scaleSlider) {
+        scaleSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (scaleVal) scaleVal.textContent = val.toFixed(1);
+            trackedItems.forEach(item => {
+                if (item.wrapper) {
+                    item.wrapper.scale.set(val, val, val);
+                }
+            });
+        });
+    }
 };
 
 setupAR();
