@@ -13,8 +13,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "vite": "^5.0.0",
+    "mind-ar": "^1.2.5",
     "three": "^0.160.0",
-    "mind-ar": "^1.2.5"
+    "vite": "^5.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.1.3"
   }
 }

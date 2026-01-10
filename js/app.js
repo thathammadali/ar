@@ -13,9 +13,9 @@ const CONFIG = {
     // SCALE: Now interpreted as "Multiplier of Normalized Size". 
     // 1.0 = Width of Marker. 0.5 = Half Width.
     MAPPINGS: [
-        { index: 0, model: 'Temple.glb', scale: 4 },
-        { index: 1, model: 'Staircase.glb', scale: 4 },
-        { index: 2, model: 'Buddha.glb', scale: 4 },
+        { index: 1, model: 'Temple.glb', scale: 3 },
+        { index: 0, model: 'Staircase.glb', scale: 3 },
+        { index: 2, model: 'Buddha.glb', scale: 3 },
     ]
 };
 
@@ -96,67 +96,48 @@ const setupAR = async () => {
 
             const model = gltf.scene;
 
-            // FIX: Texture Pixelation
-            // Traverse model and set texture filters to Linear (Smooth)
-            model.traverse((node) => {
-                if (node.isMesh && node.material && node.material.map) {
-                    node.material.map.minFilter = THREE.LinearFilter;
-                    node.material.map.magFilter = THREE.LinearFilter;
-                    node.material.needsUpdate = true;
-                }
-            });
+            // FIX: Robust Centering with Wrapper
+            // 1. Create a Wrapper Group (To be attached to Anchor)
+            const wrapper = new THREE.Group();
+            wrapper.add(model);
 
-            // --- Normalization Logic ---
-            // 1. Compute Bounding Box
+            // 2. Apply Rotations (User Request)
+            model.rotation.x = Math.PI / 2; // 90 deg X Rotation
+
+            // 3. Compute Box of result (in Wrapper Space)
+            model.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(model);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
 
-            console.log(`[${mapping.model}] Original Size:`, size);
+            console.log(`[${mapping.model}] Rotated Size:`, size);
 
-            // 2. Normalize Scale (Fit largest dimension to 0.2 - visible but safe)
+            // 4. Calculate Scale
+            // Fit largest dimension to marker size * multiplier
             const maxDim = Math.max(size.x, size.y, size.z);
-            let scaleFactor = 0.2 / maxDim; // Baseline: 20% of marker width
-
-            // Apply User Scale Override (e.g. 0.5 * 0.2 = 0.1 total)
-            if (mapping.scale) {
-                scaleFactor *= mapping.scale;
-            }
+            let scaleFactor = (0.2 * 2) / maxDim; // Baseline: 0.4 (2x marker)
+            if (mapping.scale) scaleFactor *= mapping.scale;
 
             model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-            // FIX: Rotate 90 degrees on X axis per user request
-            model.rotation.x = Math.PI / 2;
-
-            // --- Center Geometry (Full Center) ---
-            // If the model is "far away", it means X/Z are offset.
-            // We MUST return them to 0 (marker center).
+            // 5. Center Logic
+            // Shift model in Wrapper Space so its VISUAL bottom-center is at (0,0,0)
+            // Since we scaled the model, we must scale the offset too.
             model.position.set(
                 -center.x * scaleFactor,
-                -box.min.y * scaleFactor,
+                -box.min.y * scaleFactor, // Align Bottom
                 -center.z * scaleFactor
             );
 
-            console.log(`[${mapping.model}] Normalized Scale:`, scaleFactor);
+            console.log(`[${mapping.model}] Final Scale: ${scaleFactor}`);
 
             // --- Standard MindAR Setup ---
             const anchor = mindarThree.addAnchor(mapping.index);
 
-            // DEBUG: Red Cube REMOVED per user request
-            // const debugGeo = new THREE.BoxGeometry(0.02, 0.02, 0.02);
-            // const debugMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            // const debugCube = new THREE.Mesh(debugGeo, debugMat);
-            // anchor.group.add(debugCube);
+            // Add Wrapper to Anchor
+            anchor.group.add(wrapper);
 
-            // DEBUG: Axes Helper REMOVED per user request
-            // const axesHelper = new THREE.AxesHelper(0.2);
-            // anchor.group.add(axesHelper);
 
-            // Add Model to Anchor Group
-            // Push model slightly "back" (into the marker) to avoid near-plane clipping if marker is too close
-            // model.position.z -= 0.1; 
-
-            anchor.group.add(model);
 
             console.log(`Model ${mapping.index} attached to anchor.`);
 

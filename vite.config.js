@@ -1,12 +1,16 @@
 import { defineConfig } from 'vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
     base: './',
-    // publicDir defaults to 'public', which is where we put asserts
     server: {
-        host: true, // Listen on all addresses
-        port: 8000
+        host: true,
+        port: 8000,
+        https: true
     },
+    plugins: [
+        basicSsl()
+    ],
     build: {
         outDir: 'dist',
         assetsDir: 'assets'
