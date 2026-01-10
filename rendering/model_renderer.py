@@ -27,6 +27,11 @@ from OpenGL.GL import (
     glEnd,
     glGenTextures,
     glPolygonMode,
+    glCallList,
+    glGenLists,
+    glNewList,
+    glEndList,
+    GL_COMPILE,
     glTexCoord2f,
     glTexImage2D,
     glTexParameteri,
@@ -117,17 +122,32 @@ def cv_to_gl(rvec, tvec):
     return view
 
 
-def draw_model(vertices, faces, materials, uvs=None, textures=None, texture_cache=None):
-    """Draw the 3D model using OpenGL with materials and textures.
+
+def compile_display_list(vertices, faces, materials, uvs, textures, texture_cache=None):
+    """Compile model into OpenGL Display List for high performance."""
+    if texture_cache is None:
+        global GLOBAL_TEXTURE_CACHE
+        texture_cache = GLOBAL_TEXTURE_CACHE
+        
+    list_id = glGenLists(1)
+    glNewList(list_id, GL_COMPILE)
+    # Force immediate mode draw to record commands
+    draw_model(vertices, faces, materials, uvs, textures, texture_cache, display_list_id=None)
+    glEndList()
+    return list_id
+
+
+def draw_model(vertices, faces, materials, uvs=None, textures=None, texture_cache=None, display_list_id=None):
+    """Draw the 3D model using OpenGL.
     
     Args:
-        vertices: Numpy array of vertex positions (N, 3)
-        faces: List of (triangle_indices, material_name) tuples
-        materials: Dict mapping material names to {'color': [RGB], 'texture_index': int or None}
-        uvs: Numpy array of UV coordinates (N, 2), or None
-        textures: Dict mapping texture indices to PIL.Image objects, or None
-        texture_cache: Dict for caching OpenGL texture IDs (optional)
+        ...
+        display_list_id: Optional compiled list ID for fast rendering
     """
+    if display_list_id is not None:
+        glCallList(display_list_id)
+        return
+
     global DRAW_COUNT
     DRAW_COUNT += 1
     

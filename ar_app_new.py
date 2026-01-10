@@ -49,8 +49,9 @@ from config import (
 # Import modules
 from loaders.model_loader import load_model
 from detection.marker_detector import MarkerDetector
+from detection.one_euro_filter import ARPoseFilter
 from rendering.background import render_background
-from rendering.model_renderer import draw_model, cv_to_gl
+from rendering.model_renderer import draw_model, cv_to_gl, compile_display_list
 
 
 def main():
@@ -59,46 +60,6 @@ def main():
     print("AR Application - Multi-Marker Support")
     print("Supported formats: .obj, .gltf, .glb")
     print("=" * 60)
-    
-    # Load 3D models from MARKER_MAPPING
-    model_library = {}
-    unique_models = set(MARKER_MAPPING.values())
-    
-    print(f"\nPre-loading {len(unique_models)} unique items from mapping...")
-    
-    for model_file in unique_models:
-        print(f"\nLoading: {model_file}")
-        try:
-            vertices, faces, materials, uvs, textures = load_model(model_file)
-            
-            # Auto-center vertices
-            if len(vertices) > 0:
-                center = (vertices.max(axis=0) + vertices.min(axis=0)) / 2
-                vertices -= center
-                print(f"  ✓ Centered model by: {center}")
-                
-            
-            # Store model data + empty texture cache
-            # The texture cache maps local texture indices to OpenGL IDs unique to this model
-            model_library[model_file] = (vertices, faces, materials, uvs, textures, {})
-            print(f"  ✓ Successfully loaded")
-            
-        except Exception as e:
-            print(f"  ✗ Error loading {model_file}: {e}")
-            # We don't exit; getting one model wrong shouldn't kill the app if others work
-            
-    if not model_library:
-        print("✗ No models could be loaded. Exiting.")
-        return
-
-    # Initialize marker detector
-    print("\nInitializing marker detector...")
-    try:
-        detector = MarkerDetector()
-        print("✓ Marker detector ready")
-    except Exception as e:
-        print(f"✗ Error initializing detector: {e}")
-        return
     
     # Initialize Pygame and OpenGL
     print("\nInitializing OpenGL...")
@@ -120,6 +81,58 @@ def main():
     glEnable(GL_TEXTURE_2D)
     
     print(f"✓ OpenGL initialized: {CAMERA_WIDTH}x{CAMERA_HEIGHT}")
+
+    # Load 3D models from MARKER_MAPPING
+    model_library = {}
+    unique_models = set(MARKER_MAPPING.values())
+    
+    print(f"\nPre-loading {len(unique_models)} unique items from mapping...")
+    
+    for model_file in unique_models:
+        print(f"\nLoading: {model_file}")
+        try:
+            vertices, faces, materials, uvs, textures = load_model(model_file)
+            
+            # Auto-center vertices
+            if len(vertices) > 0:
+                min_v = vertices.min(axis=0)
+                max_v = vertices.max(axis=0)
+                center = (max_v + min_v) / 2
+                
+                # Align BASE (min_y) to 0 for proper seating
+                shift = center.copy()
+                shift[1] = min_v[1]
+                
+                vertices -= shift
+                print(f"  ✓ Centered model by: {shift} (Base aligned)")
+                
+            
+            # Compile to Display List (GPU)
+            texture_cache = {}
+            print("  - Compiling geometry to GPU Display List...")
+            list_id = compile_display_list(vertices, faces, materials, uvs, textures, texture_cache)
+            
+            # Store model data + cache + display list ID
+            model_library[model_file] = (vertices, faces, materials, uvs, textures, texture_cache, list_id)
+            print(f"  ✓ Successfully loaded & compiled (List ID: {list_id})")
+            print(f"  ✓ Successfully loaded")
+            
+        except Exception as e:
+            print(f"  ✗ Error loading {model_file}: {e}")
+            # We don't exit; getting one model wrong shouldn't kill the app if others work
+            
+    if not model_library:
+        print("✗ No models could be loaded. Exiting.")
+        return
+
+    # Initialize marker detector
+    print("\nInitializing marker detector...")
+    try:
+        detector = MarkerDetector()
+        print("✓ Marker detector ready")
+    except Exception as e:
+        print(f"✗ Error initializing detector: {e}")
+        return
     
     # Initialize camera
     print("\nInitializing camera...")
@@ -139,14 +152,21 @@ def main():
     # Main loop
     running = True
     frame_count = 0
+
+    # Pose Smoothing (1 Euro Filter)
+    # Pose Smoothing (1 Euro Filter)
+    # min_cutoff: 0.01 = Extremely stable (Rock solid when still)
+    # beta: 0.05 = Heavy smoothing (Glides like syrup / "Sticky")
+    pose_filter = ARPoseFilter(min_cutoff=0.01, beta=0.05, d_cutoff=1.0)
     
-    # Tracking state
     current_scale = BASE_MODEL_SIZE
-    smoothed_rvec = None
-    smoothed_tvec = None
-    current_marker = None
+    
+    # Persistence state
+    last_rvec = None
+    last_tvec = None
+    active_marker = None
     missing_frames = 0
-    MAX_MISSING_FRAMES = 10  # Keep model visible for N frames if marker lost
+    MAX_MISSING_FRAMES = 30 # 1 second persistence
     
     while running:
         # Handle events
@@ -162,108 +182,106 @@ def main():
                 elif event.key == pygame.K_DOWN:
                     current_scale = max(0.01, current_scale - 0.05)
                     print(f"Scale decreased: {current_scale:.2f}")
+                elif event.key == pygame.K_r:
+                    pose_filter.reset()
+                    active_marker = None
+                    last_rvec, last_tvec = None, None
+                    missing_frames = MAX_MISSING_FRAMES + 1
+                    print("Reset Tracking")
         
         # Capture frame
         ret, frame = cap.read()
         if not ret:
             break
         
-        # Resize frame to match display size
+        # Resize frame
         frame = cv2.resize(frame, display)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Detection logic
-        # Returns (homography, marker_name) or (None, None)
+        # --- DETECTION ---
+        # Simple, robust per-frame detection
         homography, marker_name = detector.detect_marker(gray)
         
         detected = False
-        rvec, tvec = None, None
         
-        if homography is not None:
+        if homography is not None and marker_name:
             try:
-                # Get pose for specific marker (needs specific dimensions)
-                rvec, tvec = detector.get_pose(homography, marker_name)
-                detected = True
-                missing_frames = 0
+                rvec, tvec = detector.get_pose(homography, marker_name, last_rvec, last_tvec)
                 
-                # If we switched markers, reset smoothing to avoid "jumping"
-                if marker_name != current_marker:
-                    smoothed_rvec = None
-                    smoothed_tvec = None
-                    current_marker = marker_name
-                    # print(f"Switched to marker: {marker_name}")
-                    
+                # Sanity Check: Reject failed solves or extreme values
+                valid_pose = False
+                if rvec is not None and tvec is not None:
+                    # Check for NaNs/Infs
+                    if not (np.isnan(rvec).any() or np.isnan(tvec).any() or 
+                            np.isinf(rvec).any() or np.isinf(tvec).any()):
+                        
+                        # Check for reasonable distance (e.g., within 20 units)
+                        dist = np.linalg.norm(tvec)
+                        if 0.1 < dist < 20.0:
+                             valid_pose = True
+                
+                if valid_pose:
+                     # Filter for smoothness
+                     rvec, tvec = pose_filter.filter(rvec, tvec)
+                     
+                     # Update state
+                     last_rvec = rvec
+                     last_tvec = tvec
+                     active_marker = marker_name
+                     missing_frames = 0
+                     detected = True
             except Exception as e:
-                print(f"Pose error: {e}")
+                # print(f"Pose processing error: {e}")
+                pass
         
-        # Update tracking state (Smoothing & Persistence)
-        if detected:
-            if smoothed_rvec is None:
-                smoothed_rvec = rvec
-                smoothed_tvec = tvec
-            else:
-                # Apply exponential smoothing
-                alpha = POSITION_SMOOTHING
-                smoothed_rvec = alpha * rvec + (1 - alpha) * smoothed_rvec
-                smoothed_tvec = alpha * tvec + (1 - alpha) * smoothed_tvec
-        else:
+        if not detected:
             missing_frames += 1
-            if missing_frames > MAX_MISSING_FRAMES:
-                smoothed_rvec = None
-                smoothed_tvec = None
-                current_marker = None # Lost tracking completely
-        
+
         frame_count += 1
         
-        # Clear buffers
+        # Render
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        
-        # Render camera feed as background
         render_background(frame, texture_id)
         
-        # TEST MODE: Draw cube at fixed position for debugging
         if TEST_MODE:
-             # (... Test logic ...)
-            pass 
-        
-        # AR MODE: Draw based on smoothed pose
-        elif smoothed_tvec is not None and current_marker is not None:
+             pass
+        elif missing_frames < MAX_MISSING_FRAMES and active_marker:
+            if last_rvec is None or last_tvec is None:
+                continue
+
+            # Draw using last known valid pose
             try:
-                # 1. Identify which model to draw
-                target_model_file = MARKER_MAPPING.get(current_marker)
-                if target_model_file and target_model_file in model_library:
-                    # Unpack including texture_cache
-                    vertices, faces, materials, uvs, textures, texture_cache = model_library[target_model_file]
-                
-                    # 2. Setup Camera
-                    fy = detector.camera_matrix[1, 1]
-                    fovy = 2 * np.degrees(np.arctan(CAMERA_HEIGHT / (2 * fy)))
+                target_model = MARKER_MAPPING.get(active_marker)
+                if target_model in model_library:
+                    vertices, faces, materials, uvs, textures, texture_cache, list_id = model_library[target_model]
                     
+                    # Camera
                     glMatrixMode(GL_PROJECTION)
                     glLoadIdentity()
+                    fy = detector.camera_matrix[1, 1]
+                    fovy = 2 * np.degrees(np.arctan(CAMERA_HEIGHT / (2 * fy)))
                     gluPerspective(fovy, display[0] / display[1], 0.1, 100.0)
                     
-                    # 3. Setup ModelView
+                    # ModelView
                     glMatrixMode(GL_MODELVIEW)
                     glLoadIdentity()
-                    view_matrix = cv_to_gl(smoothed_rvec, smoothed_tvec)
+                    view_matrix = cv_to_gl(last_rvec, last_tvec)
                     glMultMatrixf(view_matrix.T)
                     
-                    # 4. Transform Model
-                    glRotatef(90, 1, 0, 0) # User preference
+                    # Transform
+                    glRotatef(90, 1, 0, 0)
                     scale = current_scale
                     glScalef(scale, scale, scale)
                     
-                    # 5. Draw
-                    draw_model(vertices, faces, materials, uvs, textures, texture_cache)
-            
+                    # Draw
+                    draw_model(vertices, faces, materials, uvs, textures, texture_cache, display_list_id=list_id)
+                    
             except Exception as e:
-                if frame_count % 30 == 0:
-                    print(f"Warning: Rendering error: {e}")
-        
+                if frame_count % 60 == 0:
+                    print(f"Render error: {e}")
+                    
         pygame.display.flip()
     
-    # Cleanup
     cap.release()
     pygame.quit()
     print("\nApplication closed.")
