@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MindARThree } from 'mind-ar/mindar-image-three.prod.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MindARThree } from 'mind-ar/dist/mindar-image-three.prod.js';
 import { ARPoseFilter } from './OneEuroFilter.js';
 
 // Configuration
@@ -13,8 +13,8 @@ const CONFIG = {
     // SCALE: Now interpreted as "Multiplier of Normalized Size". 
     // 1.0 = Width of Marker. 0.5 = Half Width.
     MAPPINGS: [
-        { index: 0, model: 'Stupid2.glb', scale: 4 },
-        { index: 1, model: 'staircase.glb', scale: 4 },
+        { index: 0, model: 'Temple.glb', scale: 4 },
+        { index: 1, model: 'Staircase.glb', scale: 4 },
         { index: 2, model: 'Buddha.glb', scale: 4 },
     ]
 };

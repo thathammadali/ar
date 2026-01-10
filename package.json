@@ -1,0 +1,20 @@
+{
+  "name": "ar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "vite": "^5.0.0",
+    "three": "^0.160.0",
+    "mind-ar": "^1.2.5"
+  }
+}

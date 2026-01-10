@@ -1,1 +1,0 @@
-"""OpenGL rendering utilities."""
