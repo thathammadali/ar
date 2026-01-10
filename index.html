@@ -40,6 +40,13 @@
         Status: <span id="status">Initializing</span>
     </div>
 
+    <!-- UI Controls -->
+    <div
+        style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; color: white; font-family: sans-serif;">
+        <label for="brightness">Brightness</label><br>
+        <input type="range" id="brightness" min="0" max="10" step="0.5" value="5" style="width: 150px;">
+    </div>
+
     <!-- Main Entry Point -->
     <script type="module" src="./js/app.js"></script>
 </body>

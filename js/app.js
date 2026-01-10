@@ -61,13 +61,23 @@ const setupAR = async () => {
         camera.updateProjectionMatrix();
     });
 
-    // Lighting
-    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3.0); // Increased intensity
+    // Lighting - Boosted for better visibility
+    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 5.0);
     scene.add(light);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 4.0);
     dirLight.position.set(5, 5, 5);
     scene.add(dirLight);
+
+    // UI: Brightness Slider Logic
+    const slider = document.getElementById('brightness');
+    if (slider) {
+        slider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            light.intensity = val;
+            dirLight.intensity = val * 0.8; // Increased multiplier
+        });
+    }
 
     // 3. Load Models dynamically based on CONFIG.MAPPINGS
     setStatus("Loading Models...");
@@ -132,15 +142,15 @@ const setupAR = async () => {
             // --- Standard MindAR Setup ---
             const anchor = mindarThree.addAnchor(mapping.index);
 
-            // Add Red Cube (Small) for center reference
-            const debugGeo = new THREE.BoxGeometry(0.02, 0.02, 0.02);
-            const debugMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            const debugCube = new THREE.Mesh(debugGeo, debugMat);
-            anchor.group.add(debugCube);
+            // DEBUG: Red Cube REMOVED per user request
+            // const debugGeo = new THREE.BoxGeometry(0.02, 0.02, 0.02);
+            // const debugMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            // const debugCube = new THREE.Mesh(debugGeo, debugMat);
+            // anchor.group.add(debugCube);
 
-            // DEBUG: Axes Helper
-            const axesHelper = new THREE.AxesHelper(0.2);
-            anchor.group.add(axesHelper);
+            // DEBUG: Axes Helper REMOVED per user request
+            // const axesHelper = new THREE.AxesHelper(0.2);
+            // anchor.group.add(axesHelper);
 
             // Add Model to Anchor Group
             // Push model slightly "back" (into the marker) to avoid near-plane clipping if marker is too close
